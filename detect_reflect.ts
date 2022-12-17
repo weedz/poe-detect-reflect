@@ -1,21 +1,31 @@
 const decoder = new TextDecoder("utf-8");
 
-const detectList = [
+type Handler = {
+    regex: RegExp,
+    handler: (results: RegExpMatchArray[]) => {
+        title: string
+        body: string
+    }
+};
+
+const detectList: readonly Handler[] = [
     {
-        regex: /monsters reflect \d{1,}% of (?<type>.+) damage/i,
-        handler: (result: RegExpMatchArray) => {
-            if(!result.groups?.type) {
-                return;
+        regex: /monsters reflect \d{1,}% of (?<type>.+) damage/gi,
+        handler: (result: RegExpMatchArray[]) => {
+            const title = "REFLECT_DETECTED";
+            const damageTypes = [];
+            for (const r of result) {
+                damageTypes.push(r.groups!.type);
             }
             return {
-                title: "REFLECT DETECTED!",
-                body: `Damage type: ${result.groups.type}`
+                title,
+                body: `Damage type: ${damageTypes.sort().join(",")}`
             }
         }
     },
     {
-        regex: /cannot leech from monsters/i,
-        handler: (_result: unknown) => {
+        regex: /cannot leech from monsters/gi,
+        handler: () => {
             return {
                 title: "CANNOT LEECH",
                 body: ""
@@ -28,7 +38,7 @@ const ALARM_SOUND_FILE = new URL(import.meta.resolve("./warning.wav"));
 
 async function soundAlert(notificationData: {title: string, body: string}) {
     const soundAlert = Deno.run({
-        cmd: ["play", "--volume=0.5", ALARM_SOUND_FILE.pathname],
+        cmd: ["play", "--volume=0.1", ALARM_SOUND_FILE.pathname],
         stderr: "piped",
         // stdin: "piped",
     });
@@ -54,13 +64,13 @@ for await (const chunk of Deno.stdin.readable) {
     // console.log("Copied text:", text);
 
     for (const detect of detectList) {
-        const result = text.match(detect.regex);
-        if (result) {
+        const [...result] = text.matchAll(detect.regex);
+        if (result.length) {
             console.log(result);
             const notificationData = detect.handler(result);
             if (notificationData) {
-                await soundAlert(notificationData);
-                break;
+                soundAlert(notificationData);
+                // break;
             }
         }
     }
